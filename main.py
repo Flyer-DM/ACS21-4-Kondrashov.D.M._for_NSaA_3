@@ -1,7 +1,7 @@
-import multiprocessing
+from multiprocessing import Process, Pool, Queue
 from typing import List, Union
 from numpy import array, reshape
-import random
+from random import randint
 
 
 def file_opener(func):
@@ -17,7 +17,7 @@ def file_opener(func):
 MATRIX = List[List[int]]
 
 
-def calc_elem(i_a: int, i_b: int, m_a: MATRIX, m_b: MATRIX, queue: multiprocessing.Queue = None, path: str = None) -> int:
+def calc_elem(i_a: int, i_b: int, m_a: MATRIX, m_b: MATRIX, queue: Queue = None, path: str = None) -> int:
     """Функция вычисление элемента матрицы при перемножении матриц"""
     n = len(m_a[0])  # количество элементов в строке, то есть столбец
     result: int = 0
@@ -78,7 +78,7 @@ def pprint(matrix: MATRIX) -> str:
 
 def random_matrix(n: int) -> MATRIX:
     """Функция создания матрицы случайных чисел по заданной размерности"""
-    return [[random.randint(1, 100) for _ in range(n)] for _ in range(n)]
+    return [[randint(1, 100) for _ in range(n)] for _ in range(n)]
 
 
 def list_reshaper(matrix_list: list, i: int, j: int) -> MATRIX:
@@ -93,24 +93,25 @@ def multiply(m_a: MATRIX, m_b: MATRIX, path: str = None) -> Union[MATRIX, str]:
     if array(m_a).shape[1] != array(m_b).shape[0]:
         return "Умножение матриц невозможно"
     lines, columns = len(m_a), len(m_b[0])
-    if path:
+    if path:  # параллельная запись в файл по ходу вычисления
         result: list = []
-        queue = multiprocessing.Queue()
+        queue = Queue()
         for i in range(lines):
             for j in range(columns):
-                process_elem = multiprocessing.Process(target=calc_elem, args=(i, j, m_a, m_b, queue, path))
+                process_elem = Process(target=calc_elem, args=(i, j, m_a, m_b, queue, path))
                 process_elem.start()
                 result.append(queue.get())
                 process_elem.join()
-    else:
+    else:  # вычисление с использованием пула процессов с определённым кол-вом потоков
         args = [(i, j, m_a, m_b) for i in range(lines) for j in range(columns)]
-        with multiprocessing.Pool() as pool:
+        with Pool(lines * columns) as pool:
             result: list = pool.starmap(calc_elem, args)
-            pool.join()
+        pool.join()
     return list_reshaper(result, lines, columns)
 
 
 if __name__ == '__main__':
+    # example
     a = read_matrix('matrix1.txt')
     b = read_matrix('matrix2.txt')
     result_m = multiply(a, b, 'result_matrix.txt')
