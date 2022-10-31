@@ -17,15 +17,15 @@ def file_opener(func):
 MATRIX = List[List[int]]
 
 
-def calc_elem(i_a: int, i_b: int, m_a: MATRIX, m_b: MATRIX, path: str = None) -> int:
+def calc_elem(i_a: int, i_b: int, m_a: MATRIX, m_b: MATRIX, queue: multiprocessing.Queue = None, path: str = None) -> int:
     """Функция вычисление элемента матрицы при перемножении матриц"""
-    global threadings
     n = len(m_a[0])  # количество элементов в строке, то есть столбец
     result: int = 0
     for i in range(n):
         result += m_a[i_a][i] * m_b[i][i_b]
     if path:
-        write_elem(path, str(result), i_a, i_b, m_a)
+        queue.put(result)
+        write_elem(path, str(result), i_a, i_b, len(m_a), len(m_b[0]))
     return result
 
 
@@ -50,25 +50,35 @@ def load_matrix(matrix: MATRIX, path: str) -> None:
 
 
 @file_opener
-def write_elem(path: str, elem: str, i: int, j: int, m_a: MATRIX) -> None:
+def write_elem(path: str, elem: str, i: int, j: int, len_m_a: int, len_m_b: int) -> None:
     """Функция поэлементной записи вычислений с матрицами в файл"""
     if i == j == 0:
         with open(path, 'w') as file:
             file.write(elem+', ')
-    elif i == len(m_a) - 1 and j == len(m_a[0]) - 1:
+    elif j == len_m_b - 1:
+        with open(path, 'a+') as file:
+            file.write(elem+'\n')
+    elif i == len_m_a - 1 and j == len_m_b - 1:
         with open(path, 'a+') as file:
             file.write(elem)
-    elif i == len(m_a) - 2:
-        with open(path, 'a+') as file:
-            file.write(elem+',\n')
     else:
         with open(path, 'a+') as file:
             file.write(elem+', ')
 
 
-def random_matrix(lines: int, columns: int) -> MATRIX:
+def pprint(matrix: MATRIX) -> str:
+    """Функция для вывода матрицы в консоль"""
+    string = ''
+    for i in range(len(matrix)):
+        for j in range(len(matrix[0])):
+            string += '{:4d} '.format(matrix[i][j])
+        string += '\n'
+    return string
+
+
+def random_matrix(n: int) -> MATRIX:
     """Функция создания матрицы случайных чисел по заданной размерности"""
-    return [[random.randint(1, 100) for _ in range(columns)] for _ in range(lines)]
+    return [[random.randint(1, 100) for _ in range(n)] for _ in range(n)]
 
 
 def list_reshaper(matrix_list: list, i: int, j: int) -> MATRIX:
@@ -80,19 +90,28 @@ def list_reshaper(matrix_list: list, i: int, j: int) -> MATRIX:
 
 def multiply(m_a: MATRIX, m_b: MATRIX, path: str = None) -> Union[MATRIX, str]:
     """Функция переумножающая матрицы"""
-    if array(m_a).shape[0] != array(m_b).shape[1]:
+    if array(m_a).shape[1] != array(m_b).shape[0]:
         return "Умножение матриц невозможно"
     lines, columns = len(m_a), len(m_b[0])
-    args = [(i, j, a, b) for i in range(lines) for j in range(columns)]
     if path:
-        args = [(i, j, a, b, path) for i in range(lines) for j in range(columns)]
-    with multiprocessing.Pool() as pool:
-        result: list = pool.starmap(calc_elem, args)
-    pool.join()
+        result: list = []
+        queue = multiprocessing.Queue()
+        for i in range(lines):
+            for j in range(columns):
+                process_elem = multiprocessing.Process(target=calc_elem, args=(i, j, m_a, m_b, queue, path))
+                process_elem.start()
+                result.append(queue.get())
+                process_elem.join()
+    else:
+        args = [(i, j, m_a, m_b) for i in range(lines) for j in range(columns)]
+        with multiprocessing.Pool() as pool:
+            result: list = pool.starmap(calc_elem, args)
+            pool.join()
     return list_reshaper(result, lines, columns)
 
 
 if __name__ == '__main__':
-    a = [[1, 2], [3, 4]]
-    b = [[4, 5], [6, 7]]
-    print(multiply(a, b, 'D:\ССиС и ПпП\pythonProject_multiprocessing\\test.txt'))
+    a = read_matrix('matrix1.txt')
+    b = read_matrix('matrix2.txt')
+    result_m = multiply(a, b, 'result_matrix.txt')
+    print(pprint(result_m))
